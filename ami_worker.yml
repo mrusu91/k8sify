@@ -1,0 +1,130 @@
+- name: Create Instance
+  hosts: localhost
+  gather_facts: true
+  tags:
+    - instance
+  tasks:
+    - name: Include variables
+      include_vars: all.yml
+    - name: Create instance
+      ec2:
+        region: "{{ vpc_region }}"
+        vpc_subnet_id: "{{ vpc_subnets[0].id }}"
+        key_name: "{{ ec2_keypair }}"
+        instance_type: t2.micro
+        image: "{{ source_ami }}"
+        assign_public_ip: yes
+        count_tag:
+          role: ami_build_worker
+        exact_count: 1
+        instance_tags:
+          os: coreos
+          role: ami_build_worker
+        wait: true
+    - name: Refresh Inventory
+      meta: refresh_inventory
+
+- name: Bootstrap Instance
+  include: bootstrap_coreos.yml
+  vars:
+    hosts: tag_role_ami_build_worker
+  tags:
+    - bootstrap
+
+- name: Provision Instance
+  hosts: tag_role_ami_build_worker
+  gather_facts: true
+  become: true
+  tags:
+    - provision
+  tasks:
+    - name: Include variables
+      include_vars: all.yml
+    - name: /opt/bin is present
+      file:
+        dest: /opt/bin
+        state: directory
+    - name: cfssl binaries are present
+      get_url:
+        url: "{{ item.url }}"
+        dest: /opt/bin/{{ item.name }}
+        mode: 0755
+      with_items:
+        - name: cfssl
+          url: "https://pkg.cfssl.org/{{cfssl_version}}/cfssl_linux-amd64"
+        - name: cfssljson
+          url: "https://pkg.cfssl.org/{{cfssl_version}}/cfssljson_linux-amd64"
+    - name: /etc/certfetcher directory is present
+      file:
+        dest: /etc/certfetcher
+        state: directory
+    - name: certfetcher CSRs are present
+      template:
+        src: certfetcher/{{ item }}
+        dest: /etc/certfetcher/{{ item }}
+      with_items:
+        - etcd-csr.json
+        - worker-csr.json
+    - name: certfetcher service is present
+      template:
+        src: certfetcher/certfetcher.service
+        dest: /etc/systemd/system/
+# Cloud init
+    - name: Custom cloud config directory is present
+      file:
+        dest: /var/lib/coreos-install
+        state: directory
+    - name: Custom cloud config file is present
+      template:
+        src: cloud_config/worker
+        dest: /var/lib/coreos-install/user_data
+      register: cloud_config_file
+
+    - name: Kubernetes directories are present
+      file:
+        dest: "{{ item }}"
+        state: directory
+      with_items:
+        - /etc/kubernetes
+        - /etc/kubernetes/manifests
+        - /etc/kubernetes/cni
+        - /etc/kubernetes/cni/net.d
+    - name: worker kubeconfig is present
+      template:
+        src: "{{ item }}"
+        dest: /etc/kubernetes/
+      with_items:
+        - worker-kubeconfig.yml
+    - name: kubelet service is present
+      template:
+        src: kubelet.service
+        dest: /etc/systemd/system/kubelet.service
+    - name: Kubernetes worker components are present
+      template:
+        src: manifests/{{ item }}
+        dest: /etc/kubernetes/manifests/{{ item }}
+      with_items:
+        - kube-proxy.yml
+
+- name: Create AMI
+  hosts: localhost
+  gather_facts: true
+  tags:
+    - ami
+  vars:
+    output: {}
+  tasks:
+    - name: Include variables
+      include_vars: all.yml
+    - name: Create AMI
+      ec2_ami:
+        region: "{{ vpc_region }}"
+        instance_id: "{{ hostvars[groups['tag_role_ami_build_worker'][0]]['ec2_id'] }}"
+        wait: yes
+        name: "{{ worker_ami_name }}"
+      register: ami_out
+    - name: AMI id is set in output
+      set_fact:
+        output: "{{ output | combine({'worker_ami_id': ami_out.image_id }) }}"
+    - name: Variables are printed
+      debug: var=output

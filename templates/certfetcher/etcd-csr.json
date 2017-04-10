@@ -1,0 +1,21 @@
+{
+  "CN": "etcd",
+  "hosts": [
+    "{{ etcd_endpoint }}",
+    "$COREOS_EC2_IPV4_LOCAL",
+    "$COREOS_EC2_HOSTNAME"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "Kubernetes",
+      "OU": "Cluster",
+      "ST": "Oregon"
+    }
+  ]
+}

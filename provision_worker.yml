@@ -1,0 +1,29 @@
+- name: Provision Worker
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Include variables
+      include_vars: all.yml
+    - name: Launch configuration is present
+      ec2_lc:
+        name: KubeWorker {{ worker_ami_id }}
+        image_id: "{{ worker_ami_id }}"
+        instance_profile_name: KubeWorker
+        instance_type: t2.micro
+        key_name: "{{ ec2_keypair }}"
+        region: "{{ vpc_region }}"
+        assign_public_ip: yes
+      register: lc_out
+    - name: ASG is present
+      ec2_asg:
+        name: KubeWorker
+        min_size: 1
+        max_size: 10
+        desired_capacity: 1
+        launch_config_name: "{{ lc_out.name }}"
+        region: "{{ vpc_region }}"
+        vpc_zone_identifier: "{{ vpc_subnets | map(attribute='id') | list }}"
+        tags:
+          - role: worker
+          - os: coreos
+          - KubernetesCluster: "{{ kubernetes.name }}"

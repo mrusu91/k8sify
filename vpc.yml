@@ -1,0 +1,159 @@
+- name: VPC provision
+  hosts: localhost
+  gather_facts: true
+  vars:
+    - output:
+        subnets: []
+  tasks:
+    - name: Include variables
+      include_vars: all.yml
+    - name: VPC is present
+      ec2_vpc_net:
+        region: "{{ vpc_region }}"
+        cidr_block: "{{ vpc_cidr }}"
+        name: "{{ kubernetes.name }}"
+        tags:
+          KubernetesCluster: "{{ kubernetes.name }}"
+      register: vpc_out
+    - name: VPC id is set in output
+      set_fact:
+        output: "{{ output | combine({'vpc_id': vpc_out.vpc.id}) }}"
+    - name: Internet gateway is present
+      ec2_vpc_igw:
+        region: "{{ vpc_region }}"
+        vpc_id: "{{ vpc_out.vpc.id }}"
+    - name: Subnet is present
+      ec2_vpc_subnet:
+        region: "{{ vpc_region }}"
+        vpc_id: "{{ vpc_out.vpc.id }}"
+        az: "{{ item.az }}"
+        cidr: "{{ item.cidr }}"
+        tags:
+          KubernetesCluster: "{{ kubernetes.name }}"
+      register: subnet_out
+      with_items: "{{ vpc_subnets }}"
+    - name: Subnet is set in output
+      set_fact:
+        output: "{{ output | combine({'subnets': output.subnets + [item.subnet]}) }}"
+      with_items: "{{ subnet_out.results }}"
+    - name: Route table is present
+      ec2_vpc_route_table:
+        region: "{{ vpc_region }}"
+        vpc_id: "{{ vpc_out.vpc.id }}"
+        subnets: "{{ vpc_subnets | map(attribute='cidr') | list }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: igw
+        tags:
+          KubernetesCluster: "{{ kubernetes.name }}"
+    - name: DHCP options are present
+      ec2_vpc_dhcp_options:
+        region: "{{ vpc_region }}"
+        vpc_id: "{{ vpc_out.vpc.id }}"
+        dns_servers:
+          - AmazonProvidedDNS
+        domain_name: eu-west-1.compute.internal
+        tags:
+          KubernetesCluster: "{{ kubernetes.name }}"
+
+    - name: Instance profiles are present
+      iam:
+        iam_type: role
+        name: "{{ item }}"
+        state: present
+        trust_policy:
+          Version: "2012-10-17"
+          Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+      with_items:
+        - KubeMaster
+        - KubeWorker
+    - name: etcdmate IAM Policy is present
+      iam_policy:
+        policy_name: Etcdmate
+        policy_json: "{{ lookup('template', 'templates/iam_policies/etcdmate.json', convert_data=False) }}"
+        state: present
+        iam_type: role
+        iam_name: KubeMaster
+    - name: KubeMaster IAM Policy is present
+      iam_policy:
+        policy_name: KubeMaster
+        policy_json: "{{ lookup('template', 'templates/iam_policies/kube_master.json', convert_data=False) }}"
+        state: present
+        iam_type: role
+        iam_name: KubeMaster
+    - name: KubeWorker IAM Policy is present
+      iam_policy:
+        policy_name: KubeWorker
+        policy_json: "{{ lookup('template', 'templates/iam_policies/kube_worker.json', convert_data=False) }}"
+        state: present
+        iam_type: role
+        iam_name: KubeWorker
+    - name: EC2 keypair is present
+      ec2_key:
+        name: "{{ ec2_keypair }}"
+        region: "{{ vpc_region }}"
+      register: ec2_keypair_out
+    - name: Save EC2 private key
+      copy:
+        content: "{{ ec2_keypair_out.key.private_key }}"
+        dest: files/{{ ec2_keypair }}-private.pem
+      when: ec2_keypair_out.changed
+    - name: Notify of important file
+      debug:
+        msg: "Please save the generated private key {{ ec2_keypair }}-private.pem in a safe place"
+      when: ec2_keypair_out.changed
+
+    - name: Etcd ELB is present
+      ec2_elb_lb:
+        name: etcd
+        region: "{{ vpc_region }}"
+        subnets: "{{ subnet_out.results | map(attribute='subnet') | map(attribute='id') | list }}"
+        cross_az_load_balancing: yes
+        scheme: internal
+        state: present
+        connection_draining_timeout: 60
+        listeners:
+          - protocol: tcp
+            load_balancer_port: 2379
+            instance_port: 2379
+        health_check:
+            ping_protocol: tcp
+            ping_port: 2379
+            response_timeout: 5
+            interval: 10
+            unhealthy_threshold: 2
+            healthy_threshold: 3
+      register: etcd_elb_out
+    - name: Etcd endpoint is set in output
+      set_fact:
+        output: "{{ output | combine({'etcd_endpoint': etcd_elb_out.elb.dns_name}) }}"
+    - name: KubeMaster API ELB is present
+      ec2_elb_lb:
+        name: kubernetes
+        region: "{{ vpc_region }}"
+        subnets: "{{ subnet_out.results | map(attribute='subnet') | map(attribute='id') | list }}"
+        cross_az_load_balancing: yes
+        scheme: internal
+        state: present
+        connection_draining_timeout: 60
+        listeners:
+          - protocol: tcp
+            load_balancer_port: 6443
+            instance_port: 6443
+        health_check:
+            ping_protocol: tcp
+            ping_port: 6443
+            response_timeout: 5
+            interval: 10
+            unhealthy_threshold: 2
+            healthy_threshold: 3
+      register: api_elb_out
+    - name: KubeMaster API endpoint is set in output
+      set_fact:
+        output: "{{ output | combine({'api_endpoint': api_elb_out.elb.dns_name}) }}"
+    - name: Variables are printed
+      debug: var=output

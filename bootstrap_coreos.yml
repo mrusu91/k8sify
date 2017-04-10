@@ -1,0 +1,8 @@
+---
+# Why this? CoreOS doesn't have python installed.
+# More: https://coreos.com/blog/managing-coreos-with-ansible/
+- name: Bootstraping CoreOS
+  hosts: "{{ hosts }}"
+  gather_facts: false
+  roles:
+    - defunctzombie.coreos-bootstrap

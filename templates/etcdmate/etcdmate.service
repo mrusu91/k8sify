@@ -1,0 +1,19 @@
+[Unit]
+Description=Etcd member auto management tool
+Documentation=https://github.com/viruxel/etcdmate
+Requires=network-online.target certfetcher.service
+After=network-online.target certfetcher.service
+
+[Service]
+Environment=ETCDMATE_ENV_FILE=/var/run/etcd/etcdmate
+Environment=ETCDMATE_CLIENT_SCHEMA=https
+Environment=ETCDMATE_PEER_SCHEMA=https
+Environment=ETCDMATE_CA_FILE=/var/run/ssl/etcd/ca.pem
+Environment=ETCDMATE_CERT_FILE=/var/run/ssl/etcd/etcd.pem
+Environment=ETCDMATE_KEY_FILE=/var/run/ssl/etcd/etcd-key.pem
+Type=oneshot
+ExecStart=/opt/bin/etcdmate
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

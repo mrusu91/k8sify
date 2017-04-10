@@ -1,0 +1,21 @@
+#cloud-config
+
+coreos:
+  units:
+    - name: docker.service
+      command: start
+    - name: etcd-member.service
+      drop-ins:
+        - name: 20-config.conf
+          content: |
+            [Service]
+            Environment=ETCD_IMAGE_TAG=v3.1.2
+            Environment=ETCD_ADVERTISE_CLIENT_URLS=http://$private_ipv4:2379
+            Environment=ETCD_LISTEN_CLIENT_URLS=http://$private_ipv4:2379
+            Environment=ETCD_INITIAL_ADVERTISE_PEER_URLS=http://$private_ipv4:2380
+            Environment=ETCD_LISTEN_PEER_URLS=http://$private_ipv4:2380
+            Environment=ETCD_INITIAL_CLUSTER=etcd0=http://$private_ipv4:2380
+
+            ExecStart=
+            ExecStart=/usr/lib/coreos/etcd-wrapper --name etcd0 $ETCD_OPTS
+      command: start

@@ -1,0 +1,76 @@
+#cloud-config
+
+coreos:
+  locksmith:
+    group: master
+  update:
+    reboot-strategy: etcd-lock
+  units:
+    - name: certfetcher.service
+      command: start
+    - name: etcd-member.service
+      drop-ins:
+        - name: 20-config.conf
+          content: |
+            [Service]
+            Environment=ETCD_IMAGE_TAG=v3.1.2
+            Environment=ETCD_ADVERTISE_CLIENT_URLS=https://$private_ipv4:2379,http://localhost:2379
+            Environment=ETCD_LISTEN_CLIENT_URLS=https://$private_ipv4:2379,http://localhost:2379
+            Environment=ETCD_INITIAL_ADVERTISE_PEER_URLS=https://$private_ipv4:2380
+            Environment=ETCD_LISTEN_PEER_URLS=https://$private_ipv4:2380
+            Environment=ETCD_INITIAL_CLUSTER_TOKEN={{ etcd_cluster_token }}
+            Environment=ETCD_STRICT_RECONFIG_CHECK=true
+        - name: 20-name.conf
+          content: |
+            [Unit]
+            Requires=coreos-metadata.service
+            After=coreos-metadata.service
+
+            [Service]
+            EnvironmentFile=/run/metadata/coreos
+            ExecStart=
+            ExecStart=/usr/lib/coreos/etcd-wrapper --name $COREOS_EC2_INSTANCE_ID $ETCD_OPTS
+        - name: 20-cluster-state.conf
+          content: |
+            [Unit]
+            Requires=etcdmate.service
+            After=etcdmate.service
+
+            [Service]
+            EnvironmentFile=/var/run/etcd/etcdmate
+        - name: 30-ssl.conf
+          content: |
+            [Unit]
+            Requires=certfetcher.service
+            After=certfetcher.service
+
+            [Service]
+            Environment=ETCD_CERT_FILE=/etc/ssl/certs/etcd.pem
+            Environment=ETCD_KEY_FILE=/etc/ssl/certs/etcd-key.pem
+            Environment=ETCD_TRUSTED_CA_FILE=/etc/ssl/certs/ca.pem
+            Environment=ETCD_CLIENT_CERT_AUTH=true
+            Environment=ETCD_PEER_CERT_FILE=/etc/ssl/certs/etcd.pem
+            Environment=ETCD_PEER_KEY_FILE=/etc/ssl/certs/etcd-key.pem
+            Environment=ETCD_PEER_TRUSTED_CA_FILE=/etc/ssl/certs/ca.pem
+            Environment=ETCD_PEER_CLIENT_CERT_AUTH=true
+            Environment=ETCD_SSL_DIR=/var/run/ssl/etcd
+      command: start
+    - name: waits-for-dns.service
+      content: |
+        [Unit]
+        Description=Wait for DNS entries
+        Wants=systemd-resolved.service
+        Before=kubelet.service
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/sh -c 'while ! /usr/bin/grep '^[^#[:space:]]' /etc/resolv.conf > /dev/null; do sleep 1; done'
+        [Install]
+        RequiredBy=kubelet.service
+      command: start
+    - name: locksmithd.service
+      command: start
+    - name: docker.service
+      command: start
+    - name: kubelet.service
+      command: start

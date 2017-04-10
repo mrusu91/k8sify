@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+  labels:
+    k8s-app: kube-proxy
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-proxy
+    image: quay.io/coreos/hyperkube:{{ kubernetes.version }}_coreos.0
+    command:
+    - /hyperkube
+    - proxy
+    - --cluster-cidr={{ kubernetes.pods_network }}
+    - --hostname-override=$(NODE_NAME)
+    - --kubeconfig=/etc/kubernetes/worker-kubeconfig.yml
+    - --proxy-mode=iptables
+    env:
+      - name: NODE_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: spec.nodeName
+    livenessProbe:
+      httpGet:
+        host: 127.0.0.1
+        path: /healthz
+        port: 10249
+      initialDelaySeconds: 15
+      timeoutSeconds: 15
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: run-ssl-worker
+      mountPath: /run/ssl/worker
+      readOnly: true
+    - name: ssl-certs-host
+      mountPath: /etc/ssl/certs
+      readOnly: true
+    - name: etc-kubernetes
+      mountPath: /etc/kubernetes
+      readOnly: true
+  volumes:
+  - name: run-ssl-worker
+    hostPath:
+      path: /run/ssl/worker
+  - name: ssl-certs-host
+    hostPath:
+      path: /usr/share/ca-certificates
+  - name: etc-kubernetes
+    hostPath:
+      path: /etc/kubernetes

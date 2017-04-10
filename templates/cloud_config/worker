@@ -1,0 +1,27 @@
+#cloud-config
+
+coreos:
+  locksmith:
+    group: worker
+  update:
+    reboot-strategy: etcd-lock
+  units:
+    - name: waits-for-dns.service
+      content: |
+        [Unit]
+        Description=Wait for DNS entries
+        Wants=systemd-resolved.service
+        Before=kubelet.service
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/sh -c 'while ! /usr/bin/grep '^[^#[:space:]]' /etc/resolv.conf > /dev/null; do sleep 1; done'
+        [Install]
+        RequiredBy=kubelet.service
+      command: start
+    - name: locksmithd.service
+      command: start
+    - name: docker.service
+      command: start
+    - name: kubelet.service
+      command: start

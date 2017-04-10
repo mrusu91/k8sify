@@ -1,0 +1,101 @@
+- name: Create Instance
+  hosts: localhost
+  gather_facts: true
+  tags:
+    - instance
+  tasks:
+    - name: Include variables
+      include_vars: all.yml
+    - name: Create instance
+      ec2:
+        region: "{{ vpc_region }}"
+        vpc_subnet_id: "{{ vpc_subnets[0].id }}"
+        key_name: "{{ ec2_keypair }}"
+        instance_type: t2.micro
+        image: "{{ source_ami }}"
+        assign_public_ip: yes
+        count_tag:
+          role: bastion
+        exact_count: 1
+        instance_tags:
+          os: coreos
+          role: bastion
+        wait: true
+    - name: Refresh Inventory
+      meta: refresh_inventory
+
+- name: Bootstrap Instance
+  include: bootstrap_coreos.yml
+  vars:
+    hosts: tag_role_bastion
+  tags:
+    - bootstrap
+
+- name: Provision Instance
+  hosts: tag_role_bastion
+  gather_facts: true
+  become: true
+  tags:
+    - provision
+  vars:
+    - output: {}
+  tasks:
+# Cloud init
+    - name: Custom cloud config directory is present
+      file:
+        dest: /var/lib/coreos-install
+        state: directory
+    - name: Custom cloud config file is present
+      template:
+        src: cloud_config/bastion
+        dest: /var/lib/coreos-install/user_data
+      register: cloud_config_file
+    - name: Custom cloud config is applied
+      command: /bin/coreos-cloudinit --from-file=/var/lib/coreos-install/user_data
+      when: cloud_config_file.changed
+#####
+    - name: /etc/cfssl config directory is present
+      file:
+        dest: /etc/cfssl/
+        state: directory
+    - name: CA config file is present
+      template:
+        src: cfssl/ca-config.json
+        dest: /etc/cfssl/ca-config.json
+    - name: CA CSR file is present
+      template:
+        src: cfssl/ca-csr.json
+        dest: /etc/cfssl/ca-csr.json
+      register: ca_csr_out
+    - name: docker-py is present
+      pip:
+        executable: /home/core/bin/pip
+        name: docker-py
+      become: false
+    - name: CA is generated
+      docker:
+        image: viruxel/cfssl
+        name: cfssl
+        docker_api_version: 1.23
+        entrypoint: /bin/sh
+        command: '-c "cfssl gencert -initca ca-csr.json | cfssljson -bare ca"'
+        detach: false
+        volumes:
+          - "/etc/cfssl:/etc/cfssl"
+      when: ca_csr_out.changed
+    - name: cfssl API container is running
+      docker:
+        image: viruxel/cfssl
+        name: cfssl
+        docker_api_version: 1.23
+        command: "serve -address 0.0.0.0 -ca ca.pem -ca-key ca-key.pem -config ca-config.json"
+        restart_policy: always
+        ports:
+          - "8888:8888"
+        volumes:
+          - "/etc/cfssl:/etc/cfssl"
+    - name: CA address is set in output
+      set_fact:
+        output: "{{ output | combine({'ca_address': ansible_eth0.ipv4.address + ':8888'}) }}"
+    - name: Variables are printed
+      debug: var=output

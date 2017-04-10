@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-apiserver
+  namespace: kube-system
+  labels:
+    k8s-app: kube-apiserver
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-apiserver
+    image: quay.io/coreos/hyperkube:{{ kubernetes.version }}_coreos.0
+    command:
+    - /hyperkube
+    - apiserver
+    - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota
+#    - --advertise-address={{ ansible_eth0.ipv4.address }}
+    - --allow-privileged=true
+    - --anonymous-auth=false
+    - --apiserver-count={{ number_of_masters }}
+#    - --basic-auth-file=/etc/kubernetes/auth.csv
+    - --bind-address=0.0.0.0
+    - --client-ca-file=/run/ssl/master/ca.pem
+    - --cloud-provider=aws
+    - --enable-swagger-ui
+#    - --etcd-cafile=/run/ssl/master/ca.pem
+#    - --etcd-certfile=/run/ssl/master/master.pem
+#    - --etcd-keyfile=/run/ssl/master/master-key.pem
+    - --etcd-servers=http://localhost:2379
+    - --kubelet-certificate-authority=/run/ssl/master/ca.pem
+    - --kubelet-client-certificate=/run/ssl/master/master.pem
+    - --kubelet-client-key=/run/ssl/master/master-key.pem
+    - --runtime-config=api/all=true
+    - --service-account-key-file=/etc/kubernetes/service-account.pem
+    - --service-cluster-ip-range={{ kubernetes.services_network }}
+    - --storage-backend=etcd3
+    - --tls-ca-file=/run/ssl/master/ca.pem
+    - --tls-cert-file=/run/ssl/master/master.pem
+    - --tls-private-key-file=/run/ssl/master/master-key.pem
+    ports:
+    - name: https
+      containerPort: 6443
+      hostPort: 6443
+    - name: http
+      containerPort: 8080
+      hostPort: 8080
+    livenessProbe:
+      httpGet:
+        host: 127.0.0.1
+        port: 8080
+        path: /healthz
+      initialDelaySeconds: 15
+      timeoutSeconds: 15
+    volumeMounts:
+    - name: run-ssl-master
+      mountPath: /run/ssl/master
+      readOnly: true
+    - name: ssl-certs-host
+      mountPath: /etc/ssl/certs
+      readOnly: true
+    - name: etc-kubernetes
+      mountPath: /etc/kubernetes
+      readOnly: true
+  volumes:
+  - name: run-ssl-master
+    hostPath:
+      path: /run/ssl/master
+  - name: ssl-certs-host
+    hostPath:
+      path: /usr/share/ca-certificates
+  - name: etc-kubernetes
+    hostPath:
+      path: /etc/kubernetes

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-scheduler
+  namespace: kube-system
+  labels:
+    k8s-app: kube-scheduler
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-scheduler
+    image: quay.io/coreos/hyperkube:{{ kubernetes.version }}_coreos.0
+    command:
+    - /hyperkube
+    - scheduler
+    - --leader-elect=true
+    - --master=http://localhost:8080
+    livenessProbe:
+      httpGet:
+        host: 127.0.0.1
+        path: /healthz
+        port: 10251
+      initialDelaySeconds: 15
+      timeoutSeconds: 15
+    volumeMounts:
+    - name: ssl-certs-host
+      mountPath: /etc/ssl/certs
+      readOnly: true
+  volumes:
+  - name: ssl-certs-host
+    hostPath:
+      path: /usr/share/ca-certificates
