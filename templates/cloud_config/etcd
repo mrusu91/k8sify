@@ -1,0 +1,102 @@
+#cloud-config
+
+coreos:
+  locksmith:
+    group: etcd
+  update:
+    reboot-strategy: etcd-lock
+  units:
+    - name: format-volumes.service
+      command: start
+      content: |
+        [Unit]
+        Description=Formats the volumes
+        After=dev-xvdf.device
+        Requires=dev-xvdf.device
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/bin/bash -c 'if [ "$(blkid -s TYPE -o value /dev/xvdf)" != "ext4" ]; then /usr/sbin/mkfs.ext4 /dev/xvdf; fi'
+    - name: var-lib-etcd.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount the volume to /var/lib/etcd
+        Requires=format-volumes.service
+        After=format-volumes.service
+        [Mount]
+        What=/dev/xvdf
+        Where=/var/lib/etcd
+        Type=ext4
+        Options=rw,exec,user
+        [Install]
+        WantedBy=multi-user.target
+    - name: volume-permissions.service
+      command: start
+      content: |
+        [Unit]
+        Description=Set volume permissions
+        After=var-lib-etcd.mount
+        Requires=var-lib-etcd.mount
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/bin/bash -c 'if [ "$(/usr/bin/stat -c "%U %G" /var/lib/etcd)" != "etcd etcd" ]; then /usr/bin/chown -R etcd:etcd /var/lib/etcd; fi'
+    - name: certfetcher.service
+      command: start
+    - name: etcd-member.service
+      drop-ins:
+        - name: 10-volume.conf
+          content: |
+            [Unit]
+            Requires=volume-permissions.service
+            After=volume-permissions.service
+        - name: 20-config.conf
+          content: |
+            [Service]
+            Environment=ETCD_IMAGE_TAG=v3.1.6
+            Environment=ETCD_ADVERTISE_CLIENT_URLS=https://$private_ipv4:2379,http://localhost:2379
+            Environment=ETCD_LISTEN_CLIENT_URLS=https://$private_ipv4:2379,http://localhost:2379
+            Environment=ETCD_INITIAL_ADVERTISE_PEER_URLS=https://$private_ipv4:2380
+            Environment=ETCD_LISTEN_PEER_URLS=https://$private_ipv4:2380
+            Environment=ETCD_INITIAL_CLUSTER_TOKEN={{ etcd.cluster_token }}
+            Environment=ETCD_STRICT_RECONFIG_CHECK=true
+        - name: 20-name.conf
+          content: |
+            [Unit]
+            Requires=coreos-metadata.service
+            After=coreos-metadata.service
+
+            [Service]
+            EnvironmentFile=/run/metadata/coreos
+            ExecStart=
+            ExecStart=/usr/lib/coreos/etcd-wrapper --name $COREOS_EC2_INSTANCE_ID $ETCD_OPTS
+        - name: 20-cluster-state.conf
+          content: |
+            [Unit]
+            Requires=etcdmate.service
+            After=etcdmate.service
+
+            [Service]
+            EnvironmentFile=/var/run/etcd/etcdmate
+        - name: 30-ssl.conf
+          content: |
+            [Unit]
+            Requires=certfetcher.service
+            After=certfetcher.service
+
+            [Service]
+            Environment=ETCD_CERT_FILE=/etc/ssl/certs/etcd.pem
+            Environment=ETCD_KEY_FILE=/etc/ssl/certs/etcd-key.pem
+            Environment=ETCD_TRUSTED_CA_FILE=/etc/ssl/certs/ca.pem
+            Environment=ETCD_CLIENT_CERT_AUTH=true
+            Environment=ETCD_PEER_CERT_FILE=/etc/ssl/certs/etcd.pem
+            Environment=ETCD_PEER_KEY_FILE=/etc/ssl/certs/etcd-key.pem
+            Environment=ETCD_PEER_TRUSTED_CA_FILE=/etc/ssl/certs/ca.pem
+            Environment=ETCD_PEER_CLIENT_CERT_AUTH=true
+            Environment=ETCD_SSL_DIR=/var/run/ssl/etcd
+      command: start
+    - name: locksmithd.service
+      command: start
+    - name: docker.service
+      command: start

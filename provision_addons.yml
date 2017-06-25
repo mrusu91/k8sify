@@ -5,49 +5,90 @@
   tasks:
     - name: Info message is shown
       debug: msg="You need to have a proper kubectl setup in your PATH"
+      tags: ['always']
     - name: Include variables
       include_vars: all.yml
+      tags: ['always']
+    # calico
+    #- name: calico template is rendered
+    #  template:
+    #    src: kube-addons/calico.yml
+    #    dest: /tmp/calico.yml
+    #  tags: ['calico']
+    #- name: calico is deployed
+    #  shell: kubectl delete -f /tmp/calico.yml
+    #  tags: ['calico']
+    #- name: calico rendered file is removed
+    #  file:
+    #    path: /tmp/calico.yml
+    #    state: absent
+    #  tags: ['calico']
     # kube-flannel
     - name: kube-flannel template is rendered
       template:
         src: kube-addons/kube-flannel.yml
         dest: /tmp/kube-flannel.yml
+      tags: ['flannel']
     - name: kube-flannel is deployed
       shell: kubectl apply -f /tmp/kube-flannel.yml
-    - name: kube-flannel temporary file is removed
+      tags: ['flannel']
+    - name: kube-flannel rendered file is removed
       file:
         path: /tmp/kube-flannel.yml
         state: absent
+      tags: ['flannel']
     # kube-dns
     - name: kube-dns template is rendered
       template:
         src: kube-addons/kube-dns.yml
         dest: /tmp/kube-dns.yml
+      tags: ['kube-dns']
     - name: kube-dns is deployed
       shell: kubectl apply -f /tmp/kube-dns.yml
-    - name: kube-dns temporary file is removed
+      tags: ['kube-dns']
+    - name: kube-dns rendered file is removed
       file:
         path: /tmp/kube-dns.yml
         state: absent
+      tags: ['kube-dns']
     # heapster
     - name: heapster template is rendered
       template:
         src: kube-addons/heapster.yml
         dest: /tmp/heapster.yml
+      tags: ['heapster']
     - name: heapster is deployed
       shell: kubectl apply -f /tmp/heapster.yml
-    - name: heapster temporary file is removed
+      tags: ['heapster']
+    - name: heapster rendered file is removed
       file:
         path: /tmp/heapster.yml
         state: absent
+      tags: ['heapster']
     # kube-dashboard
     - name: kube-dashboard template is rendered
       template:
         src: kube-addons/kube-dashboard.yml
         dest: /tmp/kube-dashboard.yml
+      tags: ['dashboard']
     - name: kube-dashboard is deployed
       shell: kubectl apply -f /tmp/kube-dashboard.yml
-    - name: kube-dashboard temporary file is removed
+      tags: ['dashboard']
+    - name: kube-dashboard rendered file is removed
       file:
         path: /tmp/kube-dashboard.yml
         state: absent
+      tags: ['dashboard']
+    - name: aws-autoscaler template is rendered
+      template:
+        src: kube-addons/aws-autoscaler.yml
+        dest: /tmp/aws-autoscaler.yml
+      tags: ['aws-autoscaler']
+    - name: aws-autoscaler is deployed
+      shell: kubectl apply -f /tmp/aws-autoscaler.yml
+      tags: ['aws-autoscaler']
+    - name: aws-autoscaler rendered file is removed
+      file:
+        path: /tmp/aws-autoscaler.yml
+        state: absent
+      tags: ['aws-autoscaler']

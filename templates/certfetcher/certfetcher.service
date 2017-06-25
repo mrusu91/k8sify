@@ -5,23 +5,27 @@ After=network-online.target coreos-metadata.service
 
 [Service]
 EnvironmentFile=/run/metadata/coreos
-Environment=CA_ADDRESS={{ ca_address }}
+Environment=CA_ADDRESS={{ ca_endpoint }}
 WorkingDirectory=-/var/run/ssl
 Type=oneshot
 ExecStartPre=/usr/bin/mkdir -p /var/run/ssl
 
 ExecStart=/usr/bin/sh -c "/opt/bin/cfssl info -remote $CA_ADDRESS | /opt/bin/cfssljson -bare ca"
 
+{% if ec2_tag_role == "ami_build_etcd" %}
 ExecStart=/usr/bin/sh -c "/usr/bin/envsubst < /etc/certfetcher/etcd-csr.json | /opt/bin/cfssl gencert -remote $CA_ADDRESS -profile server-client - | /opt/bin/cfssljson -bare etcd"
 ExecStart=/usr/bin/mkdir -p etcd
 ExecStart=/usr/bin/cp ca.pem -t etcd
 ExecStart=/usr/bin/mv etcd.pem etcd-key.pem etcd.csr -t etcd
 ExecStart=/usr/bin/chown -R etcd:etcd etcd
+{% endif %}
 
+{% if ec2_tag_role in ["ami_build_master", "ami_build_worker"] %}
 ExecStart=/usr/bin/sh -c "/usr/bin/envsubst < /etc/certfetcher/worker-csr.json | /opt/bin/cfssl gencert -remote $CA_ADDRESS -profile server-client - | /opt/bin/cfssljson -bare worker"
 ExecStart=/usr/bin/mkdir -p worker
 ExecStart=/usr/bin/cp ca.pem -t worker
 ExecStart=/usr/bin/mv worker.pem worker-key.pem worker.csr -t worker
+{% endif %}
 
 {% if ec2_tag_role == "ami_build_master" %}
 ExecStart=/usr/bin/sh -c "/usr/bin/envsubst < /etc/certfetcher/master-csr.json | /opt/bin/cfssl gencert -remote $CA_ADDRESS -profile server-client - | /opt/bin/cfssljson -bare master"

@@ -13,6 +13,7 @@ spec:
     command:
     - /hyperkube
     - scheduler
+    - --algorithm-provider=ClusterAutoscalerProvider
     - --leader-elect=true
     - --master=http://localhost:8080
     livenessProbe:

@@ -3,10 +3,10 @@ VE_PATH := $(PWD)/.ve/bin:$(PATH)
 .PHONY: usage
 .DEFAULT_GOAL: usage
 usage:
-	$(error You need to specify an action)
+	$(error You need to specify one of: clean | build)
 
-.PHONY: clean-virtualenv
-clean-virtualenv:
+.PHONY: clean
+clean:
 	rm -rf .ve
 
 .PHONY: build

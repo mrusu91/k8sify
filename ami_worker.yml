@@ -1,19 +1,18 @@
 - name: Create Instance
   hosts: localhost
-  gather_facts: true
+  gather_facts: false
   tags:
-    - instance
+    - create
   tasks:
     - name: Include variables
       include_vars: all.yml
     - name: Create instance
       ec2:
         region: "{{ vpc_region }}"
-        vpc_subnet_id: "{{ vpc_subnets[0].id }}"
+        vpc_subnet_id: "{{ vpc_kubernetes_subnets[0].id }}"
         key_name: "{{ ec2_keypair }}"
         instance_type: t2.micro
         image: "{{ source_ami }}"
-        assign_public_ip: yes
         count_tag:
           role: ami_build_worker
         exact_count: 1
@@ -63,7 +62,6 @@
         src: certfetcher/{{ item }}
         dest: /etc/certfetcher/{{ item }}
       with_items:
-        - etcd-csr.json
         - worker-csr.json
     - name: certfetcher service is present
       template:
@@ -108,7 +106,7 @@
 
 - name: Create AMI
   hosts: localhost
-  gather_facts: true
+  gather_facts: false
   tags:
     - ami
   vars:

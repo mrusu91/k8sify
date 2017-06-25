@@ -1,7 +1,7 @@
 {
   "CN": "etcd",
   "hosts": [
-    "{{ etcd_endpoint }}",
+    "{{ etcd.endpoint }}",
     "$COREOS_EC2_IPV4_LOCAL",
     "$COREOS_EC2_HOSTNAME"
   ],

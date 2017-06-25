@@ -1,9 +1,10 @@
-- name: VPC provision
+- name: Provision VPC
   hosts: localhost
-  gather_facts: true
+  gather_facts: false
   vars:
     - output:
-        subnets: []
+        vpc_public_subnets: []
+        vpc_kubernetes_subnets: []
   tasks:
     - name: Include variables
       include_vars: all.yml
@@ -22,7 +23,39 @@
       ec2_vpc_igw:
         region: "{{ vpc_region }}"
         vpc_id: "{{ vpc_out.vpc.id }}"
-    - name: Subnet is present
+    - name: Public subnets are present
+      ec2_vpc_subnet:
+        region: "{{ vpc_region }}"
+        vpc_id: "{{ vpc_out.vpc.id }}"
+        az: "{{ item.az }}"
+        cidr: "{{ item.cidr }}"
+        tags:
+          Name: "Public"
+      register: public_subnets_out
+      with_items: "{{ vpc_public_subnets }}"
+    - name: Public subnets are set in output
+      set_fact:
+        output: "{{ output | combine({'vpc_public_subnets': output.vpc_public_subnets + [item.subnet]}) }}"
+      with_items: "{{ public_subnets_out.results }}"
+    - name: Public route table is present
+      ec2_vpc_route_table:
+        region: "{{ vpc_region }}"
+        vpc_id: "{{ vpc_out.vpc.id }}"
+        subnets: "{{ vpc_public_subnets | map(attribute='cidr') | list }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: igw
+        tags:
+          Name: Public
+    - name: NAT gateway is present
+      ec2_vpc_nat_gateway:
+        region: "{{ vpc_region }}"
+        subnet_id: "{{ public_subnets_out.results[0].subnet.id }}"
+        if_exist_do_not_create: true
+        wait: yes
+      register: nat_gateway_out
+
+    - name: Kubernetes subnets are present
       ec2_vpc_subnet:
         region: "{{ vpc_region }}"
         vpc_id: "{{ vpc_out.vpc.id }}"
@@ -30,20 +63,20 @@
         cidr: "{{ item.cidr }}"
         tags:
           KubernetesCluster: "{{ kubernetes.name }}"
-      register: subnet_out
-      with_items: "{{ vpc_subnets }}"
-    - name: Subnet is set in output
+      register: kubernetes_subnets_out
+      with_items: "{{ vpc_kubernetes_subnets }}"
+    - name: Kubernetes subnets are set in output
       set_fact:
-        output: "{{ output | combine({'subnets': output.subnets + [item.subnet]}) }}"
-      with_items: "{{ subnet_out.results }}"
-    - name: Route table is present
+        output: "{{ output | combine({'vpc_kubernetes_subnets': output.vpc_kubernetes_subnets + [item.subnet]}) }}"
+      with_items: "{{ kubernetes_subnets_out.results }}"
+    - name: Kubernetes route table is present
       ec2_vpc_route_table:
         region: "{{ vpc_region }}"
         vpc_id: "{{ vpc_out.vpc.id }}"
-        subnets: "{{ vpc_subnets | map(attribute='cidr') | list }}"
+        subnets: "{{ vpc_kubernetes_subnets | map(attribute='cidr') | list }}"
         routes:
           - dest: 0.0.0.0/0
-            gateway_id: igw
+            gateway_id: "{{ nat_gateway_out.nat_gateway_id }}"
         tags:
           KubernetesCluster: "{{ kubernetes.name }}"
     - name: DHCP options are present
@@ -52,10 +85,9 @@
         vpc_id: "{{ vpc_out.vpc.id }}"
         dns_servers:
           - AmazonProvidedDNS
-        domain_name: eu-west-1.compute.internal
+        domain_name: "{{ vpc_region }}.compute.internal"
         tags:
           KubernetesCluster: "{{ kubernetes.name }}"
-
     - name: Instance profiles are present
       iam:
         iam_type: role
@@ -69,15 +101,16 @@
             Principal:
               Service: ec2.amazonaws.com
       with_items:
+        - KubeEtcd
         - KubeMaster
         - KubeWorker
-    - name: etcdmate IAM Policy is present
+    - name: KubeEtcd IAM Policy is present
       iam_policy:
-        policy_name: Etcdmate
-        policy_json: "{{ lookup('template', 'templates/iam_policies/etcdmate.json', convert_data=False) }}"
+        policy_name: KubeEtcd
+        policy_json: "{{ lookup('template', 'templates/iam_policies/kube_etcd.json', convert_data=False) }}"
         state: present
         iam_type: role
-        iam_name: KubeMaster
+        iam_name: KubeEtcd
     - name: KubeMaster IAM Policy is present
       iam_policy:
         policy_name: KubeMaster
@@ -111,7 +144,7 @@
       ec2_elb_lb:
         name: etcd
         region: "{{ vpc_region }}"
-        subnets: "{{ subnet_out.results | map(attribute='subnet') | map(attribute='id') | list }}"
+        subnets: "{{ kubernetes_subnets_out.results | map(attribute='subnet') | map(attribute='id') | list }}"
         cross_az_load_balancing: yes
         scheme: internal
         state: present
@@ -131,11 +164,11 @@
     - name: Etcd endpoint is set in output
       set_fact:
         output: "{{ output | combine({'etcd_endpoint': etcd_elb_out.elb.dns_name}) }}"
-    - name: KubeMaster API ELB is present
+    - name: Kubernetes ELB is present
       ec2_elb_lb:
         name: kubernetes
         region: "{{ vpc_region }}"
-        subnets: "{{ subnet_out.results | map(attribute='subnet') | map(attribute='id') | list }}"
+        subnets: "{{ kubernetes_subnets_out.results | map(attribute='subnet') | map(attribute='id') | list }}"
         cross_az_load_balancing: yes
         scheme: internal
         state: present
@@ -151,9 +184,10 @@
             interval: 10
             unhealthy_threshold: 2
             healthy_threshold: 3
-      register: api_elb_out
-    - name: KubeMaster API endpoint is set in output
+      register: kubernetes_elb_out
+    - name: Kubernetes endpoint is set in output
       set_fact:
-        output: "{{ output | combine({'api_endpoint': api_elb_out.elb.dns_name}) }}"
+        output: "{{ output | combine({'kubernetes_endpoint': kubernetes_elb_out.elb.dns_name}) }}"
+
     - name: Variables are printed
       debug: var=output

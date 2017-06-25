@@ -1,15 +1,17 @@
 - name: Create Instance
   hosts: localhost
-  gather_facts: true
+  gather_facts: false
   tags:
-    - instance
+    - create
+  vars:
+    output: {}
   tasks:
     - name: Include variables
       include_vars: all.yml
     - name: Create instance
       ec2:
         region: "{{ vpc_region }}"
-        vpc_subnet_id: "{{ vpc_subnets[0].id }}"
+        vpc_subnet_id: "{{ vpc_public_subnets[0].id }}"
         key_name: "{{ ec2_keypair }}"
         instance_type: t2.micro
         image: "{{ source_ami }}"
@@ -20,7 +22,15 @@
         instance_tags:
           os: coreos
           role: bastion
+        volumes:
+          - { device_name: /dev/xvdf, volume_size: 10, volume_type: gp2 }
         wait: true
+      register: ec2_out
+    - name: Bastion public IP address is set in output
+      set_fact:
+        output: "{{ output | combine({'bastion_public_ip': ec2_out.tagged_instances[0].public_ip }) }}"
+    - name: Variables are printed
+      debug: var=output
     - name: Refresh Inventory
       meta: refresh_inventory
 
@@ -54,15 +64,15 @@
       command: /bin/coreos-cloudinit --from-file=/var/lib/coreos-install/user_data
       when: cloud_config_file.changed
 #####
-    - name: /etc/cfssl config directory is present
+    - name: /etc/cfssl directory is present
       file:
         dest: /etc/cfssl/
         state: directory
-    - name: CA config file is present
+    - name: CFSSL CA config file is present
       template:
         src: cfssl/ca-config.json
         dest: /etc/cfssl/ca-config.json
-    - name: CA CSR file is present
+    - name: CFSSL CA CSR file is present
       template:
         src: cfssl/ca-csr.json
         dest: /etc/cfssl/ca-csr.json
@@ -83,7 +93,7 @@
         volumes:
           - "/etc/cfssl:/etc/cfssl"
       when: ca_csr_out.changed
-    - name: cfssl API container is running
+    - name: CFSSL API container is running
       docker:
         image: viruxel/cfssl
         name: cfssl
@@ -94,8 +104,8 @@
           - "8888:8888"
         volumes:
           - "/etc/cfssl:/etc/cfssl"
-    - name: CA address is set in output
+    - name: CFSSL CA endpoint is set in output
       set_fact:
-        output: "{{ output | combine({'ca_address': ansible_eth0.ipv4.address + ':8888'}) }}"
+        output: "{{ output | combine({'ca_endpoint': ansible_eth0.ipv4.address + ':8888'}) }}"
     - name: Variables are printed
       debug: var=output

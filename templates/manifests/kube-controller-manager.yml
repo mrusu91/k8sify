@@ -21,6 +21,7 @@ spec:
     - --master=http://localhost:8080
     - --root-ca-file=/run/ssl/master/ca.pem
     - --service-account-private-key-file=/etc/kubernetes/service-account.pem
+    - --service-cluster-ip-range={{ kubernetes.services_network }}
     livenessProbe:
       httpGet:
         host: 127.0.0.1

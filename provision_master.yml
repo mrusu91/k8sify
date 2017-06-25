@@ -12,19 +12,17 @@
         instance_type: t2.micro
         key_name: "{{ ec2_keypair }}"
         region: "{{ vpc_region }}"
-        assign_public_ip: yes
       register: lc_out
     - name: ASG is present
       ec2_asg:
         name: KubeMaster
-        min_size: "{{ number_of_masters }}"
-        max_size: "{{ number_of_masters }}"
-        desired_capacity: "{{ number_of_masters }}"
+        min_size: "{{ kubernetes.master_count }}"
+        max_size: "{{ kubernetes.master_count }}"
+        desired_capacity: "{{ kubernetes.master_count }}"
         launch_config_name: "{{ lc_out.name }}"
         region: "{{ vpc_region }}"
-        vpc_zone_identifier: "{{ vpc_subnets | map(attribute='id') | list }}"
+        vpc_zone_identifier: "{{ vpc_kubernetes_subnets | map(attribute='id') | list }}"
         load_balancers:
-          - etcd
           - kubernetes
         tags:
           - role: master

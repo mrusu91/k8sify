@@ -2,20 +2,35 @@
 
 coreos:
   units:
-    - name: docker.service
+    - name: format-volumes.service
       command: start
-    - name: etcd-member.service
+      content: |
+        [Unit]
+        Description=Formats the volumes
+        After=dev-xvdf.device
+        Requires=dev-xvdf.device
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/bin/bash -c 'if [ "$(blkid -s TYPE -o value /dev/xvdf)" != "ext4" ]; then /usr/sbin/mkfs.ext4 /dev/xvdf; fi'
+    - name: etc-cfssl.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount the volume to /etc/cfssl
+        Requires=format-volumes.service
+        After=format-volumes.service
+        [Mount]
+        What=/dev/xvdf
+        Where=/etc/cfssl
+        Type=ext4
+        [Install]
+        WantedBy=multi-user.target
+    - name: docker.service
       drop-ins:
-        - name: 20-config.conf
+        - name: 10-volume.conf
           content: |
-            [Service]
-            Environment=ETCD_IMAGE_TAG=v3.1.2
-            Environment=ETCD_ADVERTISE_CLIENT_URLS=http://$private_ipv4:2379
-            Environment=ETCD_LISTEN_CLIENT_URLS=http://$private_ipv4:2379
-            Environment=ETCD_INITIAL_ADVERTISE_PEER_URLS=http://$private_ipv4:2380
-            Environment=ETCD_LISTEN_PEER_URLS=http://$private_ipv4:2380
-            Environment=ETCD_INITIAL_CLUSTER=etcd0=http://$private_ipv4:2380
-
-            ExecStart=
-            ExecStart=/usr/lib/coreos/etcd-wrapper --name etcd0 $ETCD_OPTS
+            [Unit]
+            Requires=etc-cfssl.mount
+            After=etc-cfssl.mount
       command: start

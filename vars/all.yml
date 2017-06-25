@@ -1,37 +1,49 @@
 kubernetes:
-  name: demo
-  version: v1.5.5
+  name: one
+  version: v1.6.6
   services_network: 172.31.0.0/24
   api_service_ip: 172.31.0.1
   dns_service_ip: 172.31.0.2
   pods_network: 192.168.0.0/16
+  master_count: 3
+  max_worker_count: 5
+  endpoint: # get it from output of vpc.yml playbook
 
+etcd:
+  cluster_size: 3
+  cluster_token: bla
+  endpoint: # get it from output of vpc.yml playbook
+  etcdmate_version: v0.1.4
+
+# AWS
 vpc_id: # get it from output of vpc.yml playbook
 vpc_region: eu-west-1
 vpc_cidr: 10.0.0.0/16
-vpc_subnets:
+vpc_public_subnets:
   - cidr: 10.0.0.0/24
     az: eu-west-1a
     id: # get it from output of vpc.yml playbook
-  - cidr: 10.0.1.0/24
+vpc_kubernetes_subnets:
+  - cidr: 10.0.10.0/24
+    az: eu-west-1a
+    id: # get it from output of vpc.yml playbook
+  - cidr: 10.0.11.0/24
     az: eu-west-1b
     id: # get it from output of vpc.yml playbook
-  - cidr: 10.0.2.0/24
+  - cidr: 10.0.12.0/24
     az: eu-west-1c
     id: # get it from output of vpc.yml playbook
-
 ec2_keypair: coreos
+bastion_public_ip: # get it by running provision_bastion.yml -t create
 
-api_endpoint: # get it from output of vpc.yml playbook
-etcd_endpoint: # get it from output of vpc.yml playbook
-
-source_ami: ami-79fccb1f  # Container Linux 1298.6.0
-ca_address: "" # get it from output of provision_bastion.yml playbook
-etcdmate_version: v0.1.4
+# CA PKI
+ca_endpoint: # get it from output of provision_bastion.yml playbook
 cfssl_version: R1.2
-etcd_cluster_token: bla
-number_of_masters: 3
 
+# AMIs
+source_ami: ami-79fccb1f  # Container Linux 1298.6.0
+etcd_ami_name: k8s-etcd-ami-v1
+etcd_ami_id: # get it from output of ami_etcd.yml playbook
 master_ami_name: k8s-master-ami-v1
 master_ami_id: # get it from output of ami_master.yml playbook
 worker_ami_name: k8s-worker-ami-v1

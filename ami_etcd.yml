@@ -14,11 +14,11 @@
         instance_type: t2.micro
         image: "{{ source_ami }}"
         count_tag:
-          role: ami_build_master
+          role: ami_build_etcd
         exact_count: 1
         instance_tags:
           os: coreos
-          role: ami_build_master
+          role: ami_build_etcd
         wait: true
     - name: Refresh Inventory
       meta: refresh_inventory
@@ -26,12 +26,12 @@
 - name: Bootstrap Instance
   include: bootstrap_coreos.yml
   vars:
-    hosts: tag_role_ami_build_master
+    hosts: tag_role_ami_build_etcd
   tags:
     - bootstrap
 
 - name: Provision Instance
-  hosts: tag_role_ami_build_master
+  hosts: tag_role_ami_build_etcd
   gather_facts: true
   become: true
   tags:
@@ -43,6 +43,15 @@
       file:
         dest: /opt/bin
         state: directory
+    - name: etcdmate binary is present
+      get_url:
+        url: "https://github.com/viruxel/etcdmate/releases/download/{{etcd.etcdmate_version}}/etcdmate-{{etcd.etcdmate_version}}-linux-amd64"
+        dest: /opt/bin/etcdmate
+        mode: 0755
+    - name: etcdmate service is present
+      template:
+        src: etcdmate/etcdmate.service
+        dest: /etc/systemd/system/
     - name: cfssl binaries are present
       get_url:
         url: "{{ item.url }}"
@@ -62,8 +71,7 @@
         src: certfetcher/{{ item }}
         dest: /etc/certfetcher/{{ item }}
       with_items:
-        - worker-csr.json
-        - master-csr.json
+        - etcd-csr.json
     - name: certfetcher service is present
       template:
         src: certfetcher/certfetcher.service
@@ -75,43 +83,9 @@
         state: directory
     - name: Custom cloud config file is present
       template:
-        src: cloud_config/master
+        src: cloud_config/etcd
         dest: /var/lib/coreos-install/user_data
       register: cloud_config_file
-
-    - name: Kubernetes directories are present
-      file:
-        dest: "{{ item }}"
-        state: directory
-      with_items:
-        - /etc/kubernetes
-        - /etc/kubernetes/manifests
-        - /etc/kubernetes/cni
-        - /etc/kubernetes/cni/net.d
-    - name: service account key is present
-      copy:
-        src: service-account.pem
-        dest: /etc/kubernetes/service-account.pem
-    - name: kubeconfigs are present
-      template:
-        src: "{{ item }}"
-        dest: /etc/kubernetes/
-      with_items:
-        - worker-kubeconfig.yml
-        - master-kubeconfig.yml
-    - name: kubelet service is present
-      template:
-        src: kubelet.service
-        dest: /etc/systemd/system/kubelet.service
-    - name: Kubernetes master components are present
-      template:
-        src: manifests/{{ item }}
-        dest: /etc/kubernetes/manifests/{{ item }}
-      with_items:
-        - kube-apiserver.yml
-        - kube-proxy.yml
-        - kube-controller-manager.yml
-        - kube-scheduler.yml
 
 - name: Create AMI
   hosts: localhost
@@ -126,12 +100,12 @@
     - name: Create AMI
       ec2_ami:
         region: "{{ vpc_region }}"
-        instance_id: "{{ hostvars[groups['tag_role_ami_build_master'][0]]['ec2_id'] }}"
+        instance_id: "{{ hostvars[groups['tag_role_ami_build_etcd'][0]]['ec2_id'] }}"
         wait: yes
-        name: "{{ master_ami_name }}"
+        name: "{{ etcd_ami_name }}"
       register: ami_out
     - name: AMI id is set in output
       set_fact:
-        output: "{{ output | combine({'master_ami_id': ami_out.image_id }) }}"
+        output: "{{ output | combine({'etcd_ami_id': ami_out.image_id }) }}"
     - name: Variables are printed
       debug: var=output

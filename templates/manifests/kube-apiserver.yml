@@ -13,20 +13,20 @@ spec:
     command:
     - /hyperkube
     - apiserver
-    - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota
-#    - --advertise-address={{ ansible_eth0.ipv4.address }}
+    - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota,DefaultTolerationSeconds
     - --allow-privileged=true
     - --anonymous-auth=false
-    - --apiserver-count={{ number_of_masters }}
-#    - --basic-auth-file=/etc/kubernetes/auth.csv
+    - --apiserver-count={{ kubernetes.master_count }}
+    - --authorization-mode=RBAC,AlwaysAllow
     - --bind-address=0.0.0.0
     - --client-ca-file=/run/ssl/master/ca.pem
     - --cloud-provider=aws
     - --enable-swagger-ui
-#    - --etcd-cafile=/run/ssl/master/ca.pem
-#    - --etcd-certfile=/run/ssl/master/master.pem
-#    - --etcd-keyfile=/run/ssl/master/master-key.pem
-    - --etcd-servers=http://localhost:2379
+    - --etcd-cafile=/run/ssl/master/ca.pem
+    - --etcd-certfile=/run/ssl/master/master.pem
+    - --etcd-keyfile=/run/ssl/master/master-key.pem
+    - --etcd-prefix=/kubernetes/registry
+    - --etcd-servers=https://{{ etcd.endpoint }}:2379
     - --kubelet-certificate-authority=/run/ssl/master/ca.pem
     - --kubelet-client-certificate=/run/ssl/master/master.pem
     - --kubelet-client-key=/run/ssl/master/master-key.pem

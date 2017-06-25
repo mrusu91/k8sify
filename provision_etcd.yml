@@ -1,4 +1,4 @@
-- name: Provision Worker
+- name: Provision Etcd
   hosts: localhost
   gather_facts: false
   tasks:
@@ -6,23 +6,27 @@
       include_vars: all.yml
     - name: Launch configuration is present
       ec2_lc:
-        name: KubeWorker {{ worker_ami_id }}
-        image_id: "{{ worker_ami_id }}"
-        instance_profile_name: KubeWorker
+        name: Etcd {{ etcd_ami_id }}
+        image_id: "{{ etcd_ami_id }}"
+        instance_profile_name: KubeEtcd
         instance_type: t2.micro
         key_name: "{{ ec2_keypair }}"
         region: "{{ vpc_region }}"
+        volumes:
+          - { device_name: /dev/xvdf, volume_size: 10, volume_type: gp2 }
       register: lc_out
     - name: ASG is present
       ec2_asg:
-        name: KubeWorker
-        min_size: 1
-        max_size: "{{ kubernetes.max_worker_count }}"
-        desired_capacity: 1
+        name: Etcd
+        min_size: "{{ etcd.cluster_size }}"
+        max_size: "{{ etcd.cluster_size }}"
+        desired_capacity: "{{ etcd.cluster_size }}"
         launch_config_name: "{{ lc_out.name }}"
         region: "{{ vpc_region }}"
         vpc_zone_identifier: "{{ vpc_kubernetes_subnets | map(attribute='id') | list }}"
+        load_balancers:
+          - etcd
         tags:
-          - role: worker
+          - role: etcd
           - os: coreos
           - KubernetesCluster: "{{ kubernetes.name }}"

@@ -1,5 +1,5 @@
 {
-  "CN": "Kubestack CA",
+  "CN": "Kubernetes CA",
   "key": {
     "algo": "rsa",
     "size": 2048
